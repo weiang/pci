@@ -6,8 +6,10 @@ import urllib2
 from BeautifulSoup import *
 from urlparse import urljoin
 import sqlite3 as sqlite
+import nn
 
 ignorewords = set(['the', 'of', 'to', 'and', 'a', 'in', 'is', 'it'])
+mynet = nn.searchnet('nn.db')
 
 class crawler:
     # Initialize the crawler with the name of database
@@ -180,7 +182,8 @@ class searcher:
                    (1.0, self.distancescore(rows)),
                    (1.5, self.inboundlinkscore(rows)),
                    (1.0, self.pagerankscore(rows)),
-                   (1.0, self.linktextscore(rows, wordids))]
+                   (1.0, self.linktextscore(rows, wordids)),
+                   (1.0, self.nnscore(rows, wordids))]
 
         for (weight, scores) in weights:
             for url in totalscores:
@@ -197,8 +200,7 @@ class searcher:
         rows, wordids = self.getmatchrows(q)
         scores = self.getscoredlist(rows, wordids)
         rankedscores = sorted(scores.items(), key=lambda x:x[1], reverse=True)
-        for (urlid, score) in rankedscores[0:10]:
-            print '%s\t%f' % (self.geturlname(urlid), score)
+        return wordids, [r[0] for r in rankedscores[0:10]]
 
     def normalizescores(self, scores, smallIsBetter=False):
         vsmall = 0.00001
@@ -290,6 +292,13 @@ class searcher:
                     score = self.con.execute("select score from pagerank where urlid=%d" % (fromid)).fetchone()[0] 
                     scores[toid] += score
 
+        return self.normalizescores(scores)
+    
+    def nnscore(self, rows, wordids):
+        urlids = [urlid for urlid in set([row[0] for row in rows])]
+
+        nnres = mynet.getresult(wordids, urlids)
+        scores = dict([(urlids[i], nnres[i]) for i in range(len(nnres))])
         return self.normalizescores(scores)
 
 def init_sqlite():
