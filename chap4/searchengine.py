@@ -178,7 +178,9 @@ class searcher:
         weights = [(1.0, self.frequencyscore(rows)), 
                    (1.5, self.locationscore(rows)),
                    (1.0, self.distancescore(rows)),
-                   (1.5, self.inboundlinkscore(rows))]
+                   (1.5, self.inboundlinkscore(rows)),
+                   (1.0, self.pagerankscore(rows)),
+                   (1.0, self.linktextscore(rows, wordids))]
 
         for (weight, scores) in weights:
             for url in totalscores:
@@ -266,6 +268,29 @@ class searcher:
                     pr += 0.85 * score / linkcount
                 self.con.execute('update pagerank set score=%f where urlid=%d' % (pr, urlid))
             self.dbcommit()
+    
+    def pagerankscore(self, rows):
+        scores = dict([(row[0], 0) for row in rows])
+
+        for urlid in scores:
+            query = "select score from pagerank where urlid=%d" % (urlid)
+            cur = self.con.execute(query).fetchone()
+            score = cur[0]
+            scores[urlid] = score
+        return self.normalizescores(scores)
+    
+    def linktextscore(self, rows, wordids):
+        scores = dict([(row[0], 0) for row in rows])
+
+        for wordid in wordids:
+            query = "select link.fromid, link.toid from linkwords,link where linkwords.wordid=%d and linkwords.rowid=link.rowid" % (wordid)
+            cur = self.con.execute(query)
+            for (fromid, toid) in cur:
+                if toid in scores:
+                    score = self.con.execute("select score from pagerank where urlid=%d" % (fromid)).fetchone()[0] 
+                    scores[toid] += score
+
+        return self.normalizescores(scores)
 
 def init_sqlite():
     pagelist = ["https://www.haskell.org/", "http://en.wikipedia.org/wiki/Haskell", "http://en.wikipedia.org/wiki/Functional_programming"]
