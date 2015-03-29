@@ -166,6 +166,7 @@ class searchnet:
             for k in range(len(self.urlids)):
                 self.setstrength(self.hiddenids[j], self.urlids[k], 1, self.wo[j][k])
         self.con.commit()
+
 def test():
     mynet = searchnet('nn.db')
 #    mynet.maketables()

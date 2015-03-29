@@ -3,6 +3,8 @@
 
 import re
 import math
+import nn
+import sqlite3 as sqlite
 
 def getwords(doc):
     splitter = re.compile('\W*')
@@ -116,6 +118,67 @@ class naivebayes(classifier):
                 return None
         return best
 
+class neuralnetwork(classifier):
+    def __init__(self, getfeatures, dbname='classifier.db', netdb='nn.db'):
+        classifier.__init__(self, getfeatures)
+        self.con = sqlite.connect(dbname)
+        self.net = nn.searchnet(netdb)
+        self.createtables()
+    
+    def __del__(self):
+        self.con.close()
+
+    def getentryid(self, table, field, value, createnew=True):
+        query = "select rowid from %s where %s='%s'" %(table, field, value)
+        cur = self.con.execute(query)
+        result = cur.fetchone()
+        if result:
+            return result[0]
+        else:
+            query = "insert into %s(%s) values ('%s')" %(table, field, value)
+            cur = self.con.execute(query)
+        return cur.lastrowid 
+
+    def createtables(self):
+        self.con.execute('create table if not exists features(feature)')
+        self.con.execute('create table if not exists categories(category)')
+        self.con.commit()
+    
+    def train(self, item, c):
+        self.incc(c)
+        featureids = []
+        features = self.getfeatures(item)
+        for f in features:
+            featureids.append(self.getentryid('features', 'feature', f))
+
+        catids = []
+        for cat in self.categories():
+            catids.append(self.getentryid('categories', 'category', cat))
+        
+        catid = self.getentryid('categories', 'category', c)
+        self.net.trainquery(featureids, catids, catid)
+    
+    def classify(self, item):
+        featureids = []
+        features = self.getfeatures(item)
+        for f in features:
+            featureids.append(self.getentryid('features', 'feature', f))
+        catids = []
+        for cat in self.categories():
+            catids.append(self.getentryid('categories', 'category', cat))
+        nnres = self.net.getresult(featureids, catids)
+
+        maxscore = 0.0
+        for i in range(len(nnres)):
+            if nnres[i] > maxscore:
+                maxscore = nnres[i]
+                best = i
+        cur = self.con.execute("select category from categories where rowid=%d" % (catids[best])).fetchone()
+        if cur != None:
+            return cur[0]
+        return None
+
+
 def sampletrain(cl):
     cl.train('Nobody owns the water.','good')
     cl.train('the quick rabbit jumps fences','good')
@@ -130,6 +193,9 @@ def test():
     cl2 = naivebayes(getwords, clsifier=cl1)
     sampletrain(cl2)
     print cl2.weightedprob('quick rabbit', 'good', cl2.prob)
+    cl3 = neuralnetwork(getwords)
+    sampletrain(cl3)
+    print cl3.classify('quick buy')
 
 if __name__ == '__main__':
     test()
